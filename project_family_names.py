@@ -16,6 +16,7 @@ from tensorflow.keras.layers import Dense, BatchNormalization, Dropout
 from tensorflow.keras.regularizers import L2
 from pathlib import Path
 import tensorflow as tf
+from tensorflow.keras.callbacks import ReduceLROnPlateau
 
 # Feature extraction
 def extract_features(sounds, sr):
@@ -28,17 +29,17 @@ def extract_features(sounds, sr):
     return np.array(features)
 
 # Data augmentation for audio
-def augment_audio(y, sr):
-    augmented = []
-    # Time stretch
-    augmented.append(librosa.effects.time_stretch(y, rate=1.2))
-    augmented.append(librosa.effects.time_stretch(y, rate=0.8))
-    # Pitch shift
-    augmented.append(librosa.effects.pitch_shift(y, sr=sr, n_steps=2))
-    augmented.append(librosa.effects.pitch_shift(y, sr=sr, n_steps=-2))
-    # Add Gaussian noise
-    augmented.append(y + 0.005 * np.random.randn(len(y)))
-    return augmented
+# def augment_audio(y, sr):
+#     augmented = []
+#     # Time stretch
+#     augmented.append(librosa.effects.time_stretch(y, rate=1.1))
+#     augmented.append(librosa.effects.time_stretch(y, rate=0.9))
+#     # Pitch shift
+#     augmented.append(librosa.effects.pitch_shift(y, sr=sr, n_steps=2))
+#     augmented.append(librosa.effects.pitch_shift(y, sr=sr, n_steps=-2))
+#     # Add Gaussian noise
+#     augmented.append(y + 0.005 * np.random.randn(len(y)))
+#     return augmented
 
 # Load and augment data
 car_sounds = []
@@ -46,14 +47,14 @@ car_path = Path('car-sounds')
 for file in car_path.glob('*.wav'):
     y, sr = librosa.load(file, sr=22050)
     car_sounds.append(y)
-    car_sounds.extend(augment_audio(y, sr))  # Augment car sounds
+    #car_sounds.extend(augment_audio(y, sr))  # Augment car sounds
 
 bike_sounds = []
 bike_path = Path('bike-sounds')
 for file in bike_path.glob('*.wav'):
     y, sr = librosa.load(file, sr=22050)
     bike_sounds.append(y)
-    bike_sounds.extend(augment_audio(y, sr))  # Augment bike sounds
+    #bike_sounds.extend(augment_audio(y, sr))  # Augment bike sounds
 
 print("Files loaded and augmented")
 print("Number of car sounds:", len(car_sounds))
@@ -82,19 +83,25 @@ X = X[..., np.newaxis]
 print("Range of X after normalization: min =", np.min(X), ", max =", np.max(X))
 
 # Split data into training and validation sets
-x_train, x_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_state=42)
+x_train, x_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+
+reduce_lr = ReduceLROnPlateau(
+    monitor="val_loss",
+    factor = 0.8,
+    patience= 3,
+    min_lr=1e-5,
+    verbose=1,
+)
 
 # Define the model
 model = Sequential([
-    Conv2D(16, (3, 3), activation='relu', input_shape=(128, 128, 1)),
+    Conv2D(10, (3, 3), activation='relu', input_shape=(128, 128, 1)),
     BatchNormalization(),
     MaxPooling2D(pool_size=(2, 2)),
-    Dropout(0.3),
     
-    Conv2D(32, (3, 3), activation='relu'),
+    Conv2D(20, (3, 3), activation='relu', kernel_regularizer=L2(0.01)),
     BatchNormalization(),
     MaxPooling2D(pool_size=(2, 2)),
-    Dropout(0.3),
     
     GlobalAveragePooling2D(),
 
@@ -109,9 +116,10 @@ model.compile(optimizer='adam',
 # Train the model
 history = model.fit(
     x_train, y_train,
-    batch_size=3,
+    batch_size=7,
     validation_data=(x_val, y_val),
-    epochs=9,
+    epochs=100,
+    callbacks=[reduce_lr]
 )
 
 # Plot training and validation performance
@@ -126,33 +134,4 @@ plt.legend()
 plt.title('Model Performance')
 plt.show()
 
-model.save("fart-noises.keras")
-
-def convert_to_tflite(model, x_train):
-    # Define the converter
-    converter = tf.lite.TFLiteConverter.from_keras_model(model)
-
-    # Apply quantization
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]
-    
-    # Provide a representative dataset for quantization
-    def representative_dataset():
-        for data in x_train[:100]:  # Use a subset of your training data
-            yield [data[np.newaxis, ...]]  # Add batch dimension
-    
-    converter.representative_dataset = representative_dataset
-    converter.target_spec.supported_types = [tf.float16]  # Use float16 quantization (optional)
-    
-    # Convert the model
-    tflite_model = converter.convert()
-    return tflite_model
-
-# Perform the conversion
-tflite_model = convert_to_tflite(model, x_train)
-
-# Save the TFLite model to a file
-tflite_model_path = "car_bike_classifier.tflite"
-with open(tflite_model_path, "wb") as f:
-    f.write(tflite_model)
-
-print(f"TFLite model saved as {tflite_model_path}")
+model.save("fart-noises-v1.1.keras")
