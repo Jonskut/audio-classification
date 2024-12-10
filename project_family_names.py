@@ -74,13 +74,13 @@ y = np.array([0] * len(car_features) + [1] * len(bike_features))
 print("Shape of X:", X.shape)
 print("Length of y:", len(y))
 
-# Normalize data
+# Standardization of data
 X = (X - np.mean(X)) / np.std(X)
 
 # Reshape for CNN
 X = X[..., np.newaxis]
 
-print("Range of X after normalization: min =", np.min(X), ", max =", np.max(X))
+print("Range of X after standardization: min =", np.min(X), ", max =", np.max(X))
 
 # Split data into training and validation sets
 x_train, x_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -111,7 +111,9 @@ model = Sequential([
 # Compile the model
 model.compile(optimizer='adam',
               loss='binary_crossentropy',
-              metrics=['accuracy'])
+              metrics=['accuracy', 'precision', 'recall'])
+
+model.summary()
 
 # Train the model
 history = model.fit(
@@ -128,6 +130,16 @@ plt.plot(history.history['accuracy'], label='Train Accuracy')
 plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
 plt.plot(history.history['loss'], label='Train Loss')
 plt.plot(history.history['val_loss'], label='Validation Loss')
+plt.xlabel('Epochs')
+plt.ylabel('Metrics')
+plt.legend()
+plt.title('Model Performance')
+plt.show()
+
+plt.figure()
+plt.plot(history.history['val_precision'], label='Validation Precision')
+plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+plt.plot(history.history['val_recall'], label='Validation Recall')
 plt.xlabel('Epochs')
 plt.ylabel('Metrics')
 plt.legend()
